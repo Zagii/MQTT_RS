@@ -16,6 +16,10 @@ EasyTransfer ETin, ETout;
 #define RS_SETUP_INFO 4 //
 #define RS_DEBUG_INFO 5 //debug info
 
+#define LED BUILTIN_LED
+#define OFF HIGH
+#define ON LOW
+
 struct RS_DATA_STRUCTURE
 {
   uint8_t type; //RS_xx
@@ -29,7 +33,10 @@ RS_DATA_STRUCTURE txdata;
 
 const char* ssid = "instalujWirusa";
 const char* password = "blablabla123";
-const char* mqtt_server = "broker.mqtt-dashboard.com";
+const char* mqtt_server = "m10.cloudmqtt.com";
+const char* mqtt_user="sduiuylx";
+const char* mqtt_pass="x1PkAMgboEro";
+const char* mqtt_port="14707";
 
 #define MAX_TOPIC_CNT 50;
 char id[5]="";
@@ -75,7 +82,7 @@ void RSpisz(int t,String s)
 
 
 boolean reconnectMQTT() {
-  if (client.connect("arduinoClient")) 
+  if (client.connect("MQTT_RS",mqtt_user,mqtt_pass)) 
   {
     for(int i=0;i<topic_cnt;i++)
     {
@@ -112,15 +119,18 @@ bool WiFiConnected()
 {
   return (WiFi.status() == WL_CONNECTED)
 }
+
+/////////////////////////SETUP///////////////////////////
 void setup()
 {
-  pinMode(BUILTIN_LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
+  pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
+  digitalWrite(LED,OFF);
   Serial.begin(115200);
   ETin.begin(details(rxdata), &Serial);
   ETout.begin(details(txdata), &Serial);
   
-  setup_wifi();
-  client.setServer(mqtt_server, 1883);
+ // setup_wifi();
+  client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
   lastReconnectAttempt = 0;
 }
@@ -161,16 +171,26 @@ void readRS()
       }
 }
 
+#define CONN_STAT_NO 0
+#define CONN_STAT_WIFI_CONNECTING 1
+#define CONN_STAT_WIFI_OK 2
+#define CONN_STAT_WIFIMQTT_CONNECTING 3
+#define CONN_STAT_WIFIMQTT_OK 4
+
+int conStat=CONN_STAT_NO;
+unsigned long sLEDmillis=0;
 
 void loop()
 {
   if(!WiFiConnected())
-  {  
+  { 
+    conStat=CONN_STAT_WIFI_CONNECTING;
     if (millis() - lastWIFIReconnectAttempt > 5000)
     {
       if(setup_wifi())
       {
         RSpisz(RS_CONN_INFO,"WiFi=ok");
+        conStat=CONN_STAT_WIFI_OK;
       }
       else
       {
@@ -182,13 +202,14 @@ void loop()
   {
     if (!client.connected()) 
     {
-     
+     conStat=CONN_STAT_WIFIMQTT_CONNECTING;
       if (millis() - lastMQTTReconnectAttempt > 5000)
       {
         lastMQTTReconnectAttempt = millis();
         if (reconnectMQTT())
         {
            RSpisz(RS_CONN_INFO,"MQTT=ok");
+           conStat=CONN_STAT_WIFIMQTT_OK;
           lastMQTTReconnectAttempt = 0;
         }
         else
@@ -198,8 +219,47 @@ void loop()
       }
     } else
     {
-          client.loop();
-          readRS();
+          client.loop();                
     }
   }
+          readRS();
+
+
+          ///// LED status blink
+          unsigned long d=millis()-sLEDmillis;
+          if(d>3000)
+          {
+            sLEDmillis=millis();
+          }
+            switch(conStat)
+            {
+              case CONN_STAT_NO: ///----------__------------__
+                if(d<2800)digitalWrite(LED,ON)else digitalWrite(LED,OFF);
+                    break;
+              case CONN_STAT_WIFI_CONNECTING: // ------_-_---------_-_----
+                if(d>=0&&d<1000)digitalWrite(LED,ON);
+                if(d>=1000&&d<1300)digitalWrite(LED,OFF);
+                if(d>=1300&&d<1600)digitalWrite(LED,ON);
+                if(d>=1600&&d<1900)digitalWrite(LED,OFF);
+                if(d>=1900)digitalWrite(LED,ON);
+                    break;
+              case CONN_STAT_WIFI_OK: // ---___---___---___
+                if(d>=0&&d<700)digitalWrite(LED,ON);
+                if(d>=700&&d<1400)digitalWrite(LED,OFF);
+                if(d>=1400&&d<2100)digitalWrite(LED,ON);
+                if(d>=2100)digitalWrite(LED,OFF);
+                    break;
+              case CONN_STAT_WIFIMQTT_CONNECTING:// ____-_-_-_______-_-_-_____
+                if(d>=0&&d<1000)digitalWrite(LED,OFF);
+                if(d>=1000&&d<1300)digitalWrite(LED,ON);
+                if(d>=1300&&d<1600)digitalWrite(LED,OFF);
+                if(d>=1600&&d<1900)digitalWrite(LED,ON);
+                if(d>=1900&&d<2100)digitalWrite(LED,OFF);
+                if(d>=2300&&d<2500)digitalWrite(LED,ON);
+                if(d>=2500)digitalWrite(LED,OFF);
+                    break;
+              case CONN_STAT_WIFIMQTT_OK:
+               if(d<300)digitalWrite(LED,ON) else digitalWrite(LED,OFF);
+                    break;
+              }
 }

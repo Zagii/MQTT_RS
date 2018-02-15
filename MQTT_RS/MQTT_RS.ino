@@ -3,6 +3,7 @@
  Easy-Transfer https://github.com/madsci1016/Arduino-EasyTransfer
 */
 #include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
 #include <PubSubClient.h>
 #include <EasyTransfer.h>
 
@@ -32,41 +33,33 @@ struct RS_DATA_STRUCTURE
 RS_DATA_STRUCTURE rxdata;
 RS_DATA_STRUCTURE txdata;
 
-const char* ssid = "open.t-mobile.pl";//"instalujWirusa";
-const char* password = "";//"blablabla123";
-const char* mqtt_server = "m10.cloudmqtt.com";
-const char* mqtt_user="sduiuylx";
-const char* mqtt_pass="JxWNyrPCTMe0";
-const uint16_t mqtt_port=14707;
+const char* mqtt_server = "m23.cloudmqtt.com";
+const char* mqtt_user="aigejtoh";
+const char* mqtt_pass="ZFlzjMm4T-XH";
+const uint16_t mqtt_port=11779;
 
 #define MAX_TOPIC_LENGHT 30
 #define MAX_MSG_LENGHT 50
 #define MAX_TOPIC_CNT 50
-char id[5]="";
+
 int topic_cnt=0;
 String topicList[MAX_TOPIC_CNT];
 
+
+ESP8266WiFiMulti wifiMulti;
 WiFiClient espClient;
 PubSubClient client(espClient);
-long lastMsg = 0;
-char msg[50];
-int value = 0;
+
 
 unsigned long lastMQTTReconnectAttempt = 0;
 unsigned long lastWIFIReconnectAttempt = 0;
 
-void callback(char* topic, byte* payload, unsigned int length) {
-    // In order to republish this payload, a copy must be made
-  // as the orignal payload buffer will be overwritten whilst
-  // constructing the PUBLISH packet.
-
-  // Allocate the correct amount of memory for the payload copy
+void callback(char* topic, byte* payload, unsigned int length) 
+{
   char* p = (char*)malloc(length);
-  // Copy the payload to the new buffer
-  memcpy(p,payload,length);
+   memcpy(p,payload,length);
   //client.publish("outTopic", p, length);
-  
-  txdata.type=RS_RECEIVE_MQTT;
+   txdata.type=RS_RECEIVE_MQTT;
   txdata.topic=topic;
   txdata.msg=p;
   ETout.sendData();
@@ -74,8 +67,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print(txdata.topic);
   Serial.print(" msg=");
   Serial.println(txdata.msg);
-  
-  // Free the memory
   free(p);
 }
 
@@ -96,25 +87,21 @@ void RSpisz(int t,String s)
 
 bool setup_wifi() 
 { 
-  
   RSpisz(RS_DEBUG_INFO,"Restart WiFi ");
- RSpisz(RS_DEBUG_INFO,ssid);
-  WiFi.begin(ssid, password);
-  delay(1000);
-  if (!WiFiConnected()) 
+ WiFi.mode(WIFI_STA);
+  if(wifiMulti.run() == WL_CONNECTED)
   {
-    RSpisz(RS_DEBUG_INFO,"Wifi Connection Error.");
+    IPAddress ip=WiFi.localIP();
+    char ss[30];
+    WiFi.SSID().toCharArray(ss,WiFi.SSID().length());
+    char b[100];
+    sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n",ss, ip[0],ip[1],ip[2],ip[3]);
+    RSpisz(RS_DEBUG_INFO,b);
+    
     return false;
   }else
   {
-   
-   RSpisz(RS_DEBUG_INFO,"WiFi connected");
-    RSpisz(RS_DEBUG_INFO,"IP address: ");
-    IPAddress ip=WiFi.localIP();
-    char b[20];
-    sprintf(b,"%d:%d:%d:%d", ip[0],ip[1],ip[2],ip[3]); 
-    RSpisz(RS_DEBUG_INFO,b);
-    
+    RSpisz(RS_DEBUG_INFO,"Wifi Connection Error."); 
     return true;
   }
 }
@@ -149,7 +136,10 @@ void setup()
 
   digitalWrite(LED,ON);
   Serial.begin(115200);
- 
+  wifiMulti.addAP("DOrangeFreeDom", "KZagaw01_ruter_key");
+  wifiMulti.addAP("open.t-mobile.pl", "");
+  wifiMulti.addAP("instalujWirusa", "blablabla123");
+  
   ETin.begin(details(rxdata), &Serial);
   ETout.begin(details(txdata), &Serial);
   

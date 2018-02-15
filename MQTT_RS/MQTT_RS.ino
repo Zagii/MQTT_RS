@@ -16,7 +16,8 @@ EasyTransfer ETin, ETout;
 #define RS_SETUP_INFO 4 //
 #define RS_DEBUG_INFO 5 //debug info
 
-#define LED BUILTIN_LED
+#define LED 2
+
 #define OFF HIGH
 #define ON LOW
 
@@ -31,17 +32,19 @@ struct RS_DATA_STRUCTURE
 RS_DATA_STRUCTURE rxdata;
 RS_DATA_STRUCTURE txdata;
 
-const char* ssid = "instalujWirusa";
-const char* password = "blablabla123";
+const char* ssid = "open.t-mobile.pl";//"instalujWirusa";
+const char* password = "";//"blablabla123";
 const char* mqtt_server = "m10.cloudmqtt.com";
 const char* mqtt_user="sduiuylx";
-const char* mqtt_pass="x1PkAMgboEro";
-const char* mqtt_port="14707";
+const char* mqtt_pass="JxWNyrPCTMe0";
+const uint16_t mqtt_port=14707;
 
-#define MAX_TOPIC_CNT 50;
+#define MAX_TOPIC_LENGHT 30
+#define MAX_MSG_LENGHT 50
+#define MAX_TOPIC_CNT 50
 char id[5]="";
 int topic_cnt=0;
-String topicList[50];
+String topicList[MAX_TOPIC_CNT];
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -58,7 +61,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   // constructing the PUBLISH packet.
 
   // Allocate the correct amount of memory for the payload copy
-  byte* p = (byte*)malloc(length);
+  char* p = (char*)malloc(length);
   // Copy the payload to the new buffer
   memcpy(p,payload,length);
   //client.publish("outTopic", p, length);
@@ -67,6 +70,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
   txdata.topic=topic;
   txdata.msg=p;
   ETout.sendData();
+  Serial.print("Debug: callback topic=");
+  Serial.print(txdata.topic);
+  Serial.print(" msg=");
+  Serial.println(txdata.msg);
   
   // Free the memory
   free(p);
@@ -78,19 +85,14 @@ void RSpisz(int t,String s)
    txdata.type=t;
    txdata.msg=s;
    ETout.sendData();
+   Serial.print("Debug RSpisz t=");
+   Serial.print(txdata.type);
+   Serial.print(" msg=");
+   Serial.println(txdata.msg);
 }
 
 
-boolean reconnectMQTT() {
-  if (client.connect("MQTT_RS",mqtt_user,mqtt_pass)) 
-  {
-    for(int i=0;i<topic_cnt;i++)
-    {
-      client.subscribe(topicList[i]);
-    }
-  }
-  return client.connected();
-}
+
 
 bool setup_wifi() 
 { 
@@ -98,6 +100,7 @@ bool setup_wifi()
   RSpisz(RS_DEBUG_INFO,"Restart WiFi ");
  RSpisz(RS_DEBUG_INFO,ssid);
   WiFi.begin(ssid, password);
+  delay(1000);
   if (!WiFiConnected()) 
   {
     RSpisz(RS_DEBUG_INFO,"Wifi Connection Error.");
@@ -107,7 +110,11 @@ bool setup_wifi()
    
    RSpisz(RS_DEBUG_INFO,"WiFi connected");
     RSpisz(RS_DEBUG_INFO,"IP address: ");
-    RSpisz(RS_DEBUG_INFO,WiFi.localIP());
+    IPAddress ip=WiFi.localIP();
+    char b[20];
+    sprintf(b,"%d:%d:%d:%d", ip[0],ip[1],ip[2],ip[3]); 
+    RSpisz(RS_DEBUG_INFO,b);
+    
     return true;
   }
 }
@@ -117,22 +124,39 @@ bool setup_wifi()
 //false -not connected
 bool WiFiConnected() 
 {
-  return (WiFi.status() == WL_CONNECTED)
+  return (WiFi.status() == WL_CONNECTED);
 }
+
+boolean reconnectMQTT()
+{
+  if (client.connect("MQTT_RS",mqtt_user,mqtt_pass)) 
+  {
+    for(int i=0;i<topic_cnt;i++)
+    {
+      char t[30];
+      topicList[i].toCharArray(t,topicList[i].length());
+      client.subscribe(t);
+    }
+  }
+  return client.connected();
+}
+
 
 /////////////////////////SETUP///////////////////////////
 void setup()
 {
   pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
-  digitalWrite(LED,OFF);
+
+  digitalWrite(LED,ON);
   Serial.begin(115200);
+ 
   ETin.begin(details(rxdata), &Serial);
   ETout.begin(details(txdata), &Serial);
   
  // setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
-  lastReconnectAttempt = 0;
+  topicList[topic_cnt++]="x";
 }
 
 
@@ -140,32 +164,38 @@ void readRS()
 {
     if(!ETin.receiveData()) return;
 
-    switch(ETin.type)
+    switch(rxdata.type)
     {
       case RS_CONN_INFO:   // wifi / mqtt status
       //nie pojawi się
            break;
-      case RS_RECEIVE_MQTT  // msg from mqtt serwer
+      case RS_RECEIVE_MQTT:  // msg from mqtt serwer
       //nie pojawi się
            break;
-      case RS_PUBLISH_MQTT  // msg to send
-            client.publish(ETin.topic,ETin.msg);
+      case RS_PUBLISH_MQTT:  // msg to send
+            char t[MAX_TOPIC_LENGHT];
+            char m[MAX_MSG_LENGHT];
+            rxdata.topic.toCharArray(t,txdata.topic.length());
+            rxdata.msg.toCharArray(m,txdata.msg.length());
+            client.publish(t,m);
            break;
-      case RS_SUBSCRIBE_MQTT  //setup subsribe topic
+      case RS_SUBSCRIBE_MQTT:  //setup subsribe topic
             if(topic_cnt<MAX_TOPIC_CNT)
             {
               for(int i=0;i<topic_cnt;i++)
               {
-                if(ETin.topic==topicList[i] return;
+                if(rxdata.topic==topicList[i]) return;
               }
-              topicList[topic_cnt]=ETin.topic;
+              topicList[topic_cnt]=rxdata.topic;
               topic_cnt++;
-              client.subscribe(ETin.topic);
+              char t[MAX_TOPIC_LENGHT];
+               rxdata.topic.toCharArray(t,txdata.topic.length());
+              client.subscribe(t);
             }
            break;
-      case RS_SETUP_INFO  //
+      case RS_SETUP_INFO:  //
            break;
-      case RS_DEBUG_INFO  //debug info
+      case RS_DEBUG_INFO:  //debug info
       //nie pojawi się
            break;
       }
@@ -182,6 +212,7 @@ unsigned long sLEDmillis=0;
 
 void loop()
 {
+
   if(!WiFiConnected())
   { 
     conStat=CONN_STAT_WIFI_CONNECTING;
@@ -195,6 +226,7 @@ void loop()
       else
       {
         RSpisz(RS_CONN_INFO,"WiFi=Err");
+      
       }
       lastWIFIReconnectAttempt = millis();
     }
@@ -215,6 +247,8 @@ void loop()
         else
         {
              RSpisz(RS_CONN_INFO,"MQTT=Err");
+             Serial.print("Err MQTTstat= ");Serial.println(client.state());
+               Serial.print("WIFI ip= ");Serial.println(WiFi.localIP());
         }
       }
     } else
@@ -229,12 +263,14 @@ void loop()
           unsigned long d=millis()-sLEDmillis;
           if(d>3000)
           {
-            sLEDmillis=millis();
+           
+           sLEDmillis=millis();
           }
+      
             switch(conStat)
             {
-              case CONN_STAT_NO: ///----------__------------__
-                if(d<2800)digitalWrite(LED,ON)else digitalWrite(LED,OFF);
+              case CONN_STAT_NO: ///----------__------------__  <-- ten stan praktycznie nie występuje
+                if(d<2800)digitalWrite(LED,ON); else digitalWrite(LED,OFF);
                     break;
               case CONN_STAT_WIFI_CONNECTING: // ------_-_---------_-_----
                 if(d>=0&&d<1000)digitalWrite(LED,ON);
@@ -243,23 +279,17 @@ void loop()
                 if(d>=1600&&d<1900)digitalWrite(LED,OFF);
                 if(d>=1900)digitalWrite(LED,ON);
                     break;
-              case CONN_STAT_WIFI_OK: // ---___---___---___
+              case CONN_STAT_WIFI_OK: // ---___---___---___ <-- ten stan praktycznie nie występuje
                 if(d>=0&&d<700)digitalWrite(LED,ON);
                 if(d>=700&&d<1400)digitalWrite(LED,OFF);
                 if(d>=1400&&d<2100)digitalWrite(LED,ON);
                 if(d>=2100)digitalWrite(LED,OFF);
                     break;
-              case CONN_STAT_WIFIMQTT_CONNECTING:// ____-_-_-_______-_-_-_____
-                if(d>=0&&d<1000)digitalWrite(LED,OFF);
-                if(d>=1000&&d<1300)digitalWrite(LED,ON);
-                if(d>=1300&&d<1600)digitalWrite(LED,OFF);
-                if(d>=1600&&d<1900)digitalWrite(LED,ON);
-                if(d>=1900&&d<2100)digitalWrite(LED,OFF);
-                if(d>=2300&&d<2500)digitalWrite(LED,ON);
-                if(d>=2500)digitalWrite(LED,OFF);
+              case CONN_STAT_WIFIMQTT_CONNECTING:// ---___---___---___
+                  digitalWrite(LED, !digitalRead(LED));
                     break;
-              case CONN_STAT_WIFIMQTT_OK:
-               if(d<300)digitalWrite(LED,ON) else digitalWrite(LED,OFF);
+              case CONN_STAT_WIFIMQTT_OK: // --___________--_________
+               if(d<300)digitalWrite(LED,ON); else digitalWrite(LED,OFF);
                     break;
               }
 }

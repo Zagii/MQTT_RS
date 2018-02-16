@@ -33,10 +33,12 @@ struct RS_DATA_STRUCTURE
 RS_DATA_STRUCTURE rxdata;
 RS_DATA_STRUCTURE txdata;
 
-const char* mqtt_server = "m23.cloudmqtt.com";
-const char* mqtt_user="aigejtoh";
-const char* mqtt_pass="ZFlzjMm4T-XH";
-const uint16_t mqtt_port=11779;
+const char* nodeMCUid="MQTT_RS1";
+const char* debugTopic="DebugTopic";
+const char* mqtt_server ="broker.hivemq.com"; //"m23.cloudmqtt.com";
+const char* mqtt_user="";//"aigejtoh";
+const char* mqtt_pass="";//"ZFlzjMm4T-XH";
+const uint16_t mqtt_port=1883;
 
 #define MAX_TOPIC_LENGHT 30
 #define MAX_MSG_LENGHT 50
@@ -93,7 +95,7 @@ bool setup_wifi()
   {
     IPAddress ip=WiFi.localIP();
     char ss[30];
-    WiFi.SSID().toCharArray(ss,WiFi.SSID().length());
+    WiFi.SSID().toCharArray(ss,WiFi.SSID().length()+1);
     char b[100];
     sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n",ss, ip[0],ip[1],ip[2],ip[3]);
     RSpisz(RS_DEBUG_INFO,b);
@@ -116,13 +118,14 @@ bool WiFiConnected()
 
 boolean reconnectMQTT()
 {
-  if (client.connect("MQTT_RS",mqtt_user,mqtt_pass)) 
+  if (client.connect(nodeMCUid,mqtt_user,mqtt_pass)) 
   {
     for(int i=0;i<topic_cnt;i++)
     {
       char t[30];
       topicList[i].toCharArray(t,topicList[i].length());
       client.subscribe(t);
+      loguj((String)"reconnectMQTT, subscribe to: "+t);
     }
   }
   return client.connected();
@@ -146,9 +149,24 @@ void setup()
  // setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
-  topicList[topic_cnt++]="x";
+  topicList[topic_cnt]=String(MAX_TOPIC_LENGHT);
+  topicList[topic_cnt++]="nodeSub";
+   topicList[topic_cnt]=String(MAX_TOPIC_LENGHT);
+  topicList[topic_cnt++]="nodeSub2";
 }
 
+void loguj(char* t)
+{
+  char m[MAX_MSG_LENGHT];
+  sprintf(m,"%s_%s",nodeMCUid,t);
+  client.publish(debugTopic,m);
+}
+void loguj(String s)
+{
+  char m[MAX_MSG_LENGHT];
+  s.toCharArray(m,s.length());
+  loguj(m);
+}
 
 void readRS()
 {
@@ -189,6 +207,20 @@ void readRS()
       //nie pojawi się
            break;
       }
+}
+
+// t is time in seconds = millis()/1000;
+char * TimeToString(unsigned long t)
+{
+ static char str[12];
+ long d =t/(3600*24);
+ t=t%(3600*24);
+ long h = t / 3600;
+ t = t % 3600;
+ int m = t / 60;
+ int s = t % 60;
+ sprintf(str, "%03ldd%02ldh%02dm",d, h, m);
+ return str;
 }
 
 #define CONN_STAT_NO 0
@@ -233,12 +265,13 @@ void loop()
            RSpisz(RS_CONN_INFO,"MQTT=ok");
            conStat=CONN_STAT_WIFIMQTT_OK;
           lastMQTTReconnectAttempt = 0;
+          loguj((String)"Połączono ssid="+WiFi.SSID()+" ip="+WiFi.localIP()[0]+"."+WiFi.localIP()[1]+"."+WiFi.localIP()[2]+"."+WiFi.localIP()[3]+"\0");
         }
         else
         {
              RSpisz(RS_CONN_INFO,"MQTT=Err");
              Serial.print("Err MQTTstat= ");Serial.println(client.state());
-               Serial.print("WIFI ip= ");Serial.println(WiFi.localIP());
+             Serial.print("WIFI ip= ");Serial.println(WiFi.localIP());
         }
       }
     } else
@@ -255,8 +288,18 @@ void loop()
           {
            
            sLEDmillis=millis();
+            char m[MAX_MSG_LENGHT];
+            sprintf(m,"%d",sLEDmillis);
+            client.publish("nodePub",m);
           }
-      
+          if(millis()%60000==0)
+          {
+            unsigned long mmm=millis();
+   
+            String str="czas od restartu= "+(String) TimeToString(mmm/1000);
+            loguj(str);
+            Serial.println(str);
+          }
             switch(conStat)
             {
               case CONN_STAT_NO: ///----------__------------__  <-- ten stan praktycznie nie występuje

@@ -94,10 +94,10 @@ bool setup_wifi()
   if(wifiMulti.run() == WL_CONNECTED)
   {
     IPAddress ip=WiFi.localIP();
-    char ss[30];
-    WiFi.SSID().toCharArray(ss,WiFi.SSID().length()+1);
+   // char ss[30];
+  //  WiFi.SSID().toCharArray(ss,WiFi.SSID().length());
     char b[100];
-    sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n",ss, ip[0],ip[1],ip[2],ip[3]);
+    sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n", WiFi.SSID(), ip[0],ip[1],ip[2],ip[3]);
     RSpisz(RS_DEBUG_INFO,b);
     
     return false;

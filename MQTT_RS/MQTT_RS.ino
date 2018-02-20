@@ -33,7 +33,7 @@ struct RS_DATA_STRUCTURE
 RS_DATA_STRUCTURE rxdata;
 RS_DATA_STRUCTURE txdata;
 
-const char* nodeMCUid="MQTT_RS1";
+const char* nodeMCUid="Reku";
 const char* debugTopic="DebugTopic";
 const char* mqtt_server ="broker.hivemq.com"; //"m23.cloudmqtt.com";
 const char* mqtt_user="";//"aigejtoh";
@@ -42,10 +42,6 @@ const uint16_t mqtt_port=1883;
 
 #define MAX_TOPIC_LENGHT 30
 #define MAX_MSG_LENGHT 50
-#define MAX_TOPIC_CNT 50
-
-int topic_cnt=0;
-String topicList[MAX_TOPIC_CNT];
 
 
 ESP8266WiFiMulti wifiMulti;
@@ -56,14 +52,40 @@ PubSubClient client(espClient);
 unsigned long lastMQTTReconnectAttempt = 0;
 unsigned long lastWIFIReconnectAttempt = 0;
 
+bool isNumber(char * tmp)
+{
+   int j=0;
+   while(j<strlen(tmp))
+  {
+    if(tmp[j] > '9' || tmp[j] < '0')
+    {
+      return false;
+    }     
+    j++;
+  }
+ return true; 
+}
+unsigned long WDmillis=0;
 void callback(char* topic, byte* payload, unsigned int length) 
 {
   char* p = (char*)malloc(length);
-   memcpy(p,payload,length);
-  //client.publish("outTopic", p, length);
-   txdata.type=RS_RECEIVE_MQTT;
+  memcpy(p,payload,length);
+  p[length]='\0';
+  txdata.type=RS_RECEIVE_MQTT;
   txdata.topic=topic;
   txdata.msg=p;
+  if(strstr(topic,"watchdog"))
+  {
+    Serial.print("Watchdog msg=");
+    Serial.print(txdata.msg);
+    Serial.print(" teraz=");
+   
+    if(isNumber(p))
+      WDmillis=strtoul (p, NULL, 0);
+    Serial.println(WDmillis);
+    
+
+  }
   ETout.sendData();
   Serial.print("Debug: callback topic=");
   Serial.print(txdata.topic);
@@ -90,7 +112,7 @@ void RSpisz(int t,String s)
 bool setup_wifi() 
 { 
   RSpisz(RS_DEBUG_INFO,"Restart WiFi ");
- WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA);
   if(wifiMulti.run() == WL_CONNECTED)
   {
     IPAddress ip=WiFi.localIP();
@@ -120,13 +142,14 @@ boolean reconnectMQTT()
 {
   if (client.connect(nodeMCUid,mqtt_user,mqtt_pass)) 
   {
-    for(int i=0;i<topic_cnt;i++)
-    {
-      char t[30];
-      topicList[i].toCharArray(t,topicList[i].length());
-      client.subscribe(t);
-      loguj((String)"reconnectMQTT, subscribe to: "+t);
-    }
+    char s[MAX_TOPIC_LENGHT];
+    strcpy(s,nodeMCUid);
+    strcat(s,"\/#");  
+    client.subscribe(s);
+    Serial.print("@@reconnectMQTT, subscribe to: ");
+    Serial.println(s);
+    loguj((String)"reconnectMQTT, subscribe to: "+s);
+   
   }
   return client.connected();
 }
@@ -135,10 +158,13 @@ boolean reconnectMQTT()
 /////////////////////////SETUP///////////////////////////
 void setup()
 {
-  pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
-
-  digitalWrite(LED,ON);
+ 
   Serial.begin(115200);
+  delay(1500);
+  Serial.println("Setup Serial");
+   pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
+  digitalWrite(LED,ON);
+    delay(1500);
   wifiMulti.addAP("DOrangeFreeDom", "KZagaw01_ruter_key");
   wifiMulti.addAP("open.t-mobile.pl", "");
   wifiMulti.addAP("instalujWirusa", "blablabla123");
@@ -146,13 +172,8 @@ void setup()
   ETin.begin(details(rxdata), &Serial);
   ETout.begin(details(txdata), &Serial);
   
- // setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
-  topicList[topic_cnt]=String(MAX_TOPIC_LENGHT);
-  topicList[topic_cnt++]="nodeSub";
-   topicList[topic_cnt]=String(MAX_TOPIC_LENGHT);
-  topicList[topic_cnt++]="nodeSub2";
 }
 
 void loguj(char* t)
@@ -188,18 +209,6 @@ void readRS()
             client.publish(t,m);
            break;
       case RS_SUBSCRIBE_MQTT:  //setup subsribe topic
-            if(topic_cnt<MAX_TOPIC_CNT)
-            {
-              for(int i=0;i<topic_cnt;i++)
-              {
-                if(rxdata.topic==topicList[i]) return;
-              }
-              topicList[topic_cnt]=rxdata.topic;
-              topic_cnt++;
-              char t[MAX_TOPIC_LENGHT];
-               rxdata.topic.toCharArray(t,txdata.topic.length());
-              client.subscribe(t);
-            }
            break;
       case RS_SETUP_INFO:  //
            break;
@@ -284,21 +293,37 @@ void loop()
 
           ///// LED status blink
           unsigned long d=millis()-sLEDmillis;
-          if(d>3000)
+          if(millis()%600000==0) //10 min
+          {
+            char m[MAX_MSG_LENGHT];
+            sprintf(m,"%ld",millis());
+            char m2[MAX_TOPIC_LENGHT];
+            sprintf(m2,"%s/watchdog",nodeMCUid);
+            client.publish(m2,m);
+          }
+          if(d>3000)// max 3 sek
           {
            
            sLEDmillis=millis();
-            char m[MAX_MSG_LENGHT];
-            sprintf(m,"%d",sLEDmillis);
-            client.publish("nodePub",m);
+
           }
-          if(millis()%60000==0)
+           
+          if(millis()%600000==0)//10 min
           {
             unsigned long mmm=millis();
    
             String str="czas od restartu= "+(String) TimeToString(mmm/1000);
             loguj(str);
             Serial.println(str);
+            Serial.print("Watchdog czas ");
+            Serial.println(mmm-WDmillis);
+            if(mmm-WDmillis>60000)
+            {
+              Serial.println("Watchdog restart");
+              loguj("Watchdog restart");
+              delay(3000);
+              ESP.restart();
+            }
           }
             switch(conStat)
             {

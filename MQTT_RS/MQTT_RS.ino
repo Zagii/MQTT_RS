@@ -116,10 +116,10 @@ bool setup_wifi()
   if(wifiMulti.run() == WL_CONNECTED)
   {
     IPAddress ip=WiFi.localIP();
-   // char ss[30];
-  //  WiFi.SSID().toCharArray(ss,WiFi.SSID().length());
+    char ss[30];
+    WiFi.SSID().toCharArray(ss,WiFi.SSID().length()+1);
     char b[100];
-    sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n", WiFi.SSID(), ip[0],ip[1],ip[2],ip[3]);
+    sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n", ss, ip[0],ip[1],ip[2],ip[3]);
     RSpisz(RS_DEBUG_INFO,b);
     
     return false;
@@ -206,6 +206,10 @@ void readRS()
             char m[MAX_MSG_LENGHT];
             rxdata.topic.toCharArray(t,txdata.topic.length());
             rxdata.msg.toCharArray(m,txdata.msg.length());
+            Serial.print("Publish topic: ");
+            Serial.print(t);
+            Serial.print(" msg: ");
+            Serial.print(m);
             client.publish(t,m);
            break;
       case RS_SUBSCRIBE_MQTT:  //setup subsribe topic
@@ -317,7 +321,7 @@ void loop()
             Serial.println(str);
             Serial.print("Watchdog czas ");
             Serial.println(mmm-WDmillis);
-            if(mmm-WDmillis>60000)
+            if(mmm-WDmillis>600000)
             {
               Serial.println("Watchdog restart");
               loguj("Watchdog restart");

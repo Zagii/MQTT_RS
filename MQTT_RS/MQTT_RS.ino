@@ -6,9 +6,11 @@
 #include <ESP8266WiFiMulti.h>
 #include <PubSubClient.h>
 #include <EasyTransfer.h>
+#include <SoftwareSerial.h>
 
 //create two objects
 EasyTransfer ETin, ETout; 
+SoftwareSerial swSer(14, 12, false, 256);
 
 #define RS_CONN_INFO 0  // wifi / mqtt status
 #define RS_RECEIVE_MQTT 1 // msg from mqtt serwer
@@ -160,7 +162,9 @@ void setup()
 {
  
   Serial.begin(115200);
+   swSer.begin(115200);
   delay(1500);
+  Serial.println("");
   Serial.println("Setup Serial");
    pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   digitalWrite(LED,ON);
@@ -169,8 +173,8 @@ void setup()
   wifiMulti.addAP("open.t-mobile.pl", "");
   wifiMulti.addAP("instalujWirusa", "blablabla123");
   
-  ETin.begin(details(rxdata), &Serial);
-  ETout.begin(details(txdata), &Serial);
+  ETin.begin(details(rxdata), &swSer);
+  ETout.begin(details(txdata), &swSer);
   
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
@@ -192,7 +196,10 @@ void loguj(String s)
 void readRS()
 {
     if(!ETin.receiveData()) return;
-
+Serial.print("rx topic: ");
+            Serial.print(rxdata.type);
+            Serial.print(" msg: ");
+            Serial.print(rxdata.msg);
     switch(rxdata.type)
     {
       case RS_CONN_INFO:   // wifi / mqtt status
@@ -292,7 +299,8 @@ void loop()
           client.loop();                
     }
   }
-          readRS();
+    
+        readRS();
 
 
           ///// LED status blink

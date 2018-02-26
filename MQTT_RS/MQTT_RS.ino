@@ -5,19 +5,21 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include <PubSubClient.h>
-#include <EasyTransfer.h>
+//#include <EasyTransfer.h>
 #include <SoftwareSerial.h>
-
+#include <KZGSerial.h>
 //create two objects
-EasyTransfer ETin, ETout; 
+//EasyTransfer ETin, ETout; 
+KZGSerial serial;
 SoftwareSerial swSer(14, 12, false, 256);
 
-#define RS_CONN_INFO 0  // wifi / mqtt status
-#define RS_RECEIVE_MQTT 1 // msg from mqtt serwer
-#define RS_PUBLISH_MQTT 2 // msg to send
-#define RS_SUBSCRIBE_MQTT 3 //setup subsribe topic
-#define RS_SETUP_INFO 4 //
-#define RS_DEBUG_INFO 5 //debug info
+
+#define RS_CONN_INFO 'a'  // wifi / mqtt status
+#define RS_RECEIVE_MQTT 'b' // msg from mqtt serwer
+#define RS_PUBLISH_MQTT 'c' // msg to send
+#define RS_SUBSCRIBE_MQTT 'd' //setup subsribe topic
+#define RS_SETUP_INFO 'e' //
+#define RS_DEBUG_INFO 'f' //debug info
 
 #define LED 2
 
@@ -88,7 +90,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     
 
   }
-  ETout.sendData();
+//  ETout.sendData();
   Serial.print("Debug: callback topic=");
   Serial.print(txdata.topic);
   Serial.print(" msg=");
@@ -101,7 +103,7 @@ void RSpisz(int t,String s)
 {
    txdata.type=t;
    txdata.msg=s;
-   ETout.sendData();
+//   ETout.sendData();
    Serial.print("Debug RSpisz t=");
    Serial.print(txdata.type);
    Serial.print(" msg=");
@@ -164,6 +166,7 @@ void setup()
   Serial.begin(115200);
    swSer.begin(115200);
   delay(1500);
+  serial.begin(&swSer);
   Serial.println("");
   Serial.println("Setup Serial");
    pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
@@ -173,8 +176,8 @@ void setup()
   wifiMulti.addAP("open.t-mobile.pl", "");
   wifiMulti.addAP("instalujWirusa", "blablabla123");
   
-  ETin.begin(details(rxdata), &swSer);
-  ETout.begin(details(txdata), &swSer);
+ // ETin.begin(details(rxdata), &swSer);
+ // ETout.begin(details(txdata), &swSer);
   
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
@@ -195,7 +198,18 @@ void loguj(String s)
 
 void readRS()
 {
-    if(!ETin.receiveData()) return;
+  char c[100];
+int  i=0;
+  while(swSer.available()>0)
+  {
+   Serial.write(swSer.read());  
+  }
+  return;
+  c[i]='\0';
+  if(i==0)return;
+  Serial.println(c);
+   client.publish("Reku/mega",c);
+//    if(!ETin.receiveData()) return;
 Serial.print("rx topic: ");
             Serial.print(rxdata.type);
             Serial.print(" msg: ");
@@ -211,8 +225,8 @@ Serial.print("rx topic: ");
       case RS_PUBLISH_MQTT:  // msg to send
             char t[MAX_TOPIC_LENGHT];
             char m[MAX_MSG_LENGHT];
-            rxdata.topic.toCharArray(t,txdata.topic.length());
-            rxdata.msg.toCharArray(m,txdata.msg.length());
+            rxdata.topic.toCharArray(t,rxdata.topic.length());
+            rxdata.msg.toCharArray(m,rxdata.msg.length());
             Serial.print("Publish topic: ");
             Serial.print(t);
             Serial.print(" msg: ");
@@ -300,8 +314,14 @@ void loop()
     }
   }
     
-        readRS();
-
+      //  readRS();
+      serial.loop();
+      if(serial.isMsgWaiting())
+      {
+   char b[200];
+       sprintf(b,"Przyszło z Mega: type =%d / %c, topic= %s, msg=%s",serial.getMsgType(),serial.getMsgType(),serial.getMsgTopic(),serial.getMsgValue());
+       Serial.println(b);
+      }
 
           ///// LED status blink
           unsigned long d=millis()-sLEDmillis;
@@ -317,7 +337,10 @@ void loop()
           {
            
            sLEDmillis=millis();
-
+ //char mst[50];
+  //   sprintf(mst,"nodeMCU millis od restartu %lu ms.",sLEDmillis);
+    // serial.printRS(RS_DEBUG_INFO,"Z nodeMCU",mst);
+   //  Serial.println(mst);
           }
            
           if(millis()%600000==0)//10 min

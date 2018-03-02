@@ -5,12 +5,25 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include <PubSubClient.h>
-//#include <EasyTransfer.h>
+#include <EasyTransfer.h>
 #include <SoftwareSerial.h>
-#include <KZGSerial.h>
+
+
+
+#define DEBUG   //If you comment this line, the DPRINT & DPRINTLN lines are defined as blank.
+#ifdef DEBUG    //Macros are usually in all capital letters.
+  #define DPRINT(...)    Serial.print(__VA_ARGS__)     //DPRINT is a macro, debug print
+  #define DPRINTLN(...)  Serial.println(__VA_ARGS__)   //DPRINTLN is a macro, debug print with new line
+#else
+  #define DPRINT(...)     //now defines a blank line
+  #define DPRINTLN(...)   //now defines a blank line
+#endif
+
+
+
 //create two objects
-//EasyTransfer ETin, ETout; 
-KZGSerial serial;
+EasyTransfer ETin, ETout; 
+
 SoftwareSerial swSer(14, 12, false, 256);
 
 
@@ -26,12 +39,16 @@ SoftwareSerial swSer(14, 12, false, 256);
 #define OFF HIGH
 #define ON LOW
 
+#define MAX_TOPIC_LENGHT 50
+#define MAX_MSG_LENGHT 20
+
 struct RS_DATA_STRUCTURE
 {
-  uint8_t type; //RS_xx
-  String topic;
-  String msg;
+  char msg[MAX_MSG_LENGHT];
+  char topic[MAX_TOPIC_LENGHT];
+  char typ;
 };
+
 
 //give a name to the group of data
 RS_DATA_STRUCTURE rxdata;
@@ -43,9 +60,6 @@ const char* mqtt_server ="broker.hivemq.com"; //"m23.cloudmqtt.com";
 const char* mqtt_user="";//"aigejtoh";
 const char* mqtt_pass="";//"ZFlzjMm4T-XH";
 const uint16_t mqtt_port=1883;
-
-#define MAX_TOPIC_LENGHT 30
-#define MAX_MSG_LENGHT 50
 
 
 ESP8266WiFiMulti wifiMulti;
@@ -75,39 +89,37 @@ void callback(char* topic, byte* payload, unsigned int length)
   char* p = (char*)malloc(length);
   memcpy(p,payload,length);
   p[length]='\0';
-  txdata.type=RS_RECEIVE_MQTT;
-  txdata.topic=topic;
-  txdata.msg=p;
+  rxdata.typ=RS_RECEIVE_MQTT;
+  strcpy(rxdata.topic,topic);
+  strcpy(rxdata.msg,p);
   if(strstr(topic,"watchdog"))
   {
-    Serial.print("Watchdog msg=");
-    Serial.print(txdata.msg);
-    Serial.print(" teraz=");
+    DPRINT("Watchdog msg=");
+    DPRINT(rxdata.msg);
+    DPRINT(" teraz=");
    
     if(isNumber(p))
       WDmillis=strtoul (p, NULL, 0);
-    Serial.println(WDmillis);
+    DPRINTLN(WDmillis);
     
 
   }
 //  ETout.sendData();
-  Serial.print("Debug: callback topic=");
-  Serial.print(txdata.topic);
-  Serial.print(" msg=");
-  Serial.println(txdata.msg);
+ DPRINT("Debug: callback topic=");
+ DPRINT(rxdata.topic);
+ DPRINT(" msg=");
+ DPRINT(rxdata.msg);
   free(p);
 }
 
 
-void RSpisz(int t,String s)
+void RSpisz(char typ,const char* topic,char* msg)
 {
-   txdata.type=t;
-   txdata.msg=s;
-//   ETout.sendData();
-   Serial.print("Debug RSpisz t=");
-   Serial.print(txdata.type);
-   Serial.print(" msg=");
-   Serial.println(txdata.msg);
+   txdata.typ=typ;
+   strcpy(txdata.topic,topic);
+   strcpy(txdata.msg,msg);
+   ETout.sendData();
+   DPRINT("Debug RSpisz typ=");  DPRINT(txdata.typ);  DPRINT(" topic=");  DPRINT(txdata.topic); DPRINT(" msg=");  DPRINTLN(txdata.msg);
 }
 
 
@@ -115,7 +127,7 @@ void RSpisz(int t,String s)
 
 bool setup_wifi() 
 { 
-  RSpisz(RS_DEBUG_INFO,"Restart WiFi ");
+  RSpisz(RS_DEBUG_INFO,debugTopic,"Restart WiFi ");
   WiFi.mode(WIFI_STA);
   if(wifiMulti.run() == WL_CONNECTED)
   {
@@ -124,12 +136,12 @@ bool setup_wifi()
     WiFi.SSID().toCharArray(ss,WiFi.SSID().length()+1);
     char b[100];
     sprintf(b,"WiFi connected: %s ,%d.%d.%d.%d\n", ss, ip[0],ip[1],ip[2],ip[3]);
-    RSpisz(RS_DEBUG_INFO,b);
+    RSpisz(RS_DEBUG_INFO,debugTopic,b);
     
     return false;
   }else
   {
-    RSpisz(RS_DEBUG_INFO,"Wifi Connection Error."); 
+    RSpisz(RS_DEBUG_INFO,debugTopic,"Wifi Connection Error."); 
     return true;
   }
 }
@@ -150,8 +162,8 @@ boolean reconnectMQTT()
     strcpy(s,nodeMCUid);
     strcat(s,"\/#");  
     client.subscribe(s);
-    Serial.print("@@reconnectMQTT, subscribe to: ");
-    Serial.println(s);
+    DPRINT("reconnectMQTT, subscribe to: ");
+    DPRINTLN(s);
     loguj((String)"reconnectMQTT, subscribe to: "+s);
    
   }
@@ -164,20 +176,19 @@ void setup()
 {
  
   Serial.begin(115200);
-   swSer.begin(115200);
-  delay(1500);
-  serial.begin(&swSer);
-  Serial.println("");
-  Serial.println("Setup Serial");
-   pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
+  swSer.begin(115200);
+ 
+  DPRINT("");
+  DPRINTLN("Setup Serial");
+  pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   digitalWrite(LED,ON);
     delay(1500);
   wifiMulti.addAP("DOrangeFreeDom", "KZagaw01_ruter_key");
   wifiMulti.addAP("open.t-mobile.pl", "");
   wifiMulti.addAP("instalujWirusa", "blablabla123");
   
- // ETin.begin(details(rxdata), &swSer);
- // ETout.begin(details(txdata), &swSer);
+  ETin.begin(details(rxdata), &swSer);
+  ETout.begin(details(txdata), &swSer);
   
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
@@ -197,51 +208,33 @@ void loguj(String s)
 }
 
 void readRS()
-{
-  char c[100];
-int  i=0;
-  while(swSer.available()>0)
-  {
-   Serial.write(swSer.read());  
-  }
-  return;
-  c[i]='\0';
-  if(i==0)return;
-  Serial.println(c);
-   client.publish("Reku/mega",c);
-//    if(!ETin.receiveData()) return;
-Serial.print("rx topic: ");
-            Serial.print(rxdata.type);
-            Serial.print(" msg: ");
-            Serial.print(rxdata.msg);
-    switch(rxdata.type)
+{ 
+  
+    if(!ETin.receiveData()) return;
+   
+    DPRINT(__func__);DPRINT(" typ=");DPRINT(rxdata.typ);DPRINT(", topic=");DPRINT(rxdata.topic);DPRINT(", msg=");DPRINTLN(rxdata.msg);
+   
+    switch(rxdata.typ)
     {
       case RS_CONN_INFO:   // wifi / mqtt status
-      //nie pojawi się
+    
            break;
       case RS_RECEIVE_MQTT:  // msg from mqtt serwer
-      //nie pojawi się
+          
            break;
-      case RS_PUBLISH_MQTT:  // msg to send
-            char t[MAX_TOPIC_LENGHT];
-            char m[MAX_MSG_LENGHT];
-            rxdata.topic.toCharArray(t,rxdata.topic.length());
-            rxdata.msg.toCharArray(m,rxdata.msg.length());
-            Serial.print("Publish topic: ");
-            Serial.print(t);
-            Serial.print(" msg: ");
-            Serial.print(m);
-            client.publish(t,m);
-           break;
-      case RS_SUBSCRIBE_MQTT:  //setup subsribe topic
+      case RS_PUBLISH_MQTT:  // msg to send, nie pojawi sie
+        
+            client.publish(rxdata.topic,rxdata.msg);
            break;
       case RS_SETUP_INFO:  //
            break;
       case RS_DEBUG_INFO:  //debug info
-      //nie pojawi się
+          
            break;
       }
+     
 }
+
 
 // t is time in seconds = millis()/1000;
 char * TimeToString(unsigned long t)
@@ -276,12 +269,12 @@ void loop()
     {
       if(setup_wifi())
       {
-        RSpisz(RS_CONN_INFO,"WiFi=ok");
+        RSpisz(RS_CONN_INFO,debugTopic,"WiFi=ok");
         conStat=CONN_STAT_WIFI_OK;
       }
       else
       {
-        RSpisz(RS_CONN_INFO,"WiFi=Err");
+        RSpisz(RS_CONN_INFO,debugTopic,"WiFi=Err");
       
       }
       lastWIFIReconnectAttempt = millis();
@@ -296,16 +289,16 @@ void loop()
         lastMQTTReconnectAttempt = millis();
         if (reconnectMQTT())
         {
-           RSpisz(RS_CONN_INFO,"MQTT=ok");
+           RSpisz(RS_CONN_INFO,(char*)debugTopic,"MQTT=ok");
            conStat=CONN_STAT_WIFIMQTT_OK;
           lastMQTTReconnectAttempt = 0;
           loguj((String)"Połączono ssid="+WiFi.SSID()+" ip="+WiFi.localIP()[0]+"."+WiFi.localIP()[1]+"."+WiFi.localIP()[2]+"."+WiFi.localIP()[3]+"\0");
         }
         else
         {
-             RSpisz(RS_CONN_INFO,"MQTT=Err");
-             Serial.print("Err MQTTstat= ");Serial.println(client.state());
-             Serial.print("WIFI ip= ");Serial.println(WiFi.localIP());
+             RSpisz(RS_CONN_INFO,debugTopic,"MQTT=Err");
+             DPRINT("Err MQTTstat= ");DPRINTLN(client.state());
+             DPRINT("WIFI ip= ");DPRINTLN(WiFi.localIP());
         }
       }
     } else
@@ -314,15 +307,8 @@ void loop()
     }
   }
     
-      //  readRS();
-      serial.loop();
-      if(serial.isMsgWaiting())
-      {
-   char b[200];
-       sprintf(b,"Przyszło z Mega: type =%d / %c, topic= %s, msg=%s",serial.getMsgType(),serial.getMsgType(),serial.getMsgTopic(),serial.getMsgValue());
-       Serial.println(b);
-      }
-
+        readRS();
+     
           ///// LED status blink
           unsigned long d=millis()-sLEDmillis;
           if(millis()%600000==0) //10 min
@@ -349,12 +335,12 @@ void loop()
    
             String str="czas od restartu= "+(String) TimeToString(mmm/1000);
             loguj(str);
-            Serial.println(str);
-            Serial.print("Watchdog czas ");
-            Serial.println(mmm-WDmillis);
+            DPRINTLN(str);
+            DPRINT("Watchdog czas ");
+            DPRINTLN(mmm-WDmillis);
             if(mmm-WDmillis>600000)
             {
-              Serial.println("Watchdog restart");
+              DPRINTLN("Watchdog restart");
               loguj("Watchdog restart");
               delay(3000);
               ESP.restart();

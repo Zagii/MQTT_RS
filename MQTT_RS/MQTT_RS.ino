@@ -27,12 +27,12 @@ EasyTransfer ETin, ETout;
 SoftwareSerial swSer(14, 12, false, 256);
 
 
-#define RS_CONN_INFO 'a'  // wifi / mqtt status
-#define RS_RECEIVE_MQTT 'b' // msg from mqtt serwer
-#define RS_PUBLISH_MQTT 'c' // msg to send
-#define RS_SUBSCRIBE_MQTT 'd' //setup subsribe topic
-#define RS_SETUP_INFO 'e' //
-#define RS_DEBUG_INFO 'f' //debug info
+
+#define RS_CONN_INFO 'c'  // wifi / mqtt status
+#define RS_RECEIVE_MQTT 'r' // msg from mqtt serwer
+#define RS_PUBLISH_MQTT 'p' // msg to send
+#define RS_SETUP_INFO 's' //
+#define RS_DEBUG_INFO 'd' //debug info
 
 #define LED 2
 
@@ -41,6 +41,7 @@ SoftwareSerial swSer(14, 12, false, 256);
 
 #define MAX_TOPIC_LENGHT 50
 #define MAX_MSG_LENGHT 20
+#define MAX_STR MAX_TOPIC_LENGHT+MAX_MSG_LENGHT
 
 struct RS_DATA_STRUCTURE
 {
@@ -55,7 +56,7 @@ RS_DATA_STRUCTURE rxdata;
 RS_DATA_STRUCTURE txdata;
 
 const char* nodeMCUid="Reku";
-const char* debugTopic="DebugTopic";
+const char* debugTopic="DebugTopic/Reku/nodeMCU";
 const char* mqtt_server ="broker.hivemq.com"; //"m23.cloudmqtt.com";
 const char* mqtt_user="";//"aigejtoh";
 const char* mqtt_pass="";//"ZFlzjMm4T-XH";
@@ -86,16 +87,19 @@ bool isNumber(char * tmp)
 unsigned long WDmillis=0;
 void callback(char* topic, byte* payload, unsigned int length) 
 {
+  if(length==0)return;
   char* p = (char*)malloc(length);
   memcpy(p,payload,length);
   p[length]='\0';
-  rxdata.typ=RS_RECEIVE_MQTT;
-  strcpy(rxdata.topic,topic);
-  strcpy(rxdata.msg,p);
+  txdata.typ=RS_RECEIVE_MQTT;
+  strcpy(txdata.topic,topic);
+  strcpy(txdata.msg,p);
+  DPRINT(__func__);DPRINT(", typ=");  DPRINT(txdata.typ);  DPRINT(" topic=");  DPRINT(txdata.topic); DPRINT(" msg=");  DPRINTLN(txdata.msg);
+  
   if(strstr(topic,"watchdog"))
   {
     DPRINT("Watchdog msg=");
-    DPRINT(rxdata.msg);
+    DPRINT(txdata.msg);
     DPRINT(" teraz=");
    
     if(isNumber(p))
@@ -103,12 +107,11 @@ void callback(char* topic, byte* payload, unsigned int length)
     DPRINTLN(WDmillis);
     
 
+  }else
+  {
+    ETout.sendData();
   }
-//  ETout.sendData();
- DPRINT("Debug: callback topic=");
- DPRINT(rxdata.topic);
- DPRINT(" msg=");
- DPRINT(rxdata.msg);
+  
   free(p);
 }
 
@@ -156,7 +159,7 @@ bool WiFiConnected()
 
 boolean reconnectMQTT()
 {
-  if (client.connect(nodeMCUid,mqtt_user,mqtt_pass)) 
+  if (client.connect(debugTopic,mqtt_user,mqtt_pass)) 
   {
     char s[MAX_TOPIC_LENGHT];
     strcpy(s,nodeMCUid);
@@ -164,7 +167,7 @@ boolean reconnectMQTT()
     client.subscribe(s);
     DPRINT("reconnectMQTT, subscribe to: ");
     DPRINTLN(s);
-    loguj((String)"reconnectMQTT, subscribe to: "+s);
+   // loguj((String)"reconnectMQTT, subscribe to: "+s);
    
   }
   return client.connected();
@@ -176,7 +179,8 @@ void setup()
 {
  
   Serial.begin(115200);
-  swSer.begin(115200);
+ swSer.begin(115200);
+  //swSer.begin(9600);
  
   DPRINT("");
   DPRINTLN("Setup Serial");
@@ -196,13 +200,13 @@ void setup()
 
 void loguj(char* t)
 {
-  char m[MAX_MSG_LENGHT];
+  char m[MAX_STR];
   sprintf(m,"%s_%s",nodeMCUid,t);
-  client.publish(debugTopic,m);
+  client.publish(debugTopic,t);//m);
 }
 void loguj(String s)
 {
-  char m[MAX_MSG_LENGHT];
+  char m[MAX_STR];
   s.toCharArray(m,s.length());
   loguj(m);
 }
@@ -229,7 +233,7 @@ void readRS()
       case RS_SETUP_INFO:  //
            break;
       case RS_DEBUG_INFO:  //debug info
-          
+          client.publish(rxdata.topic,rxdata.msg);
            break;
       }
      
@@ -316,16 +320,16 @@ void loop()
             char m[MAX_MSG_LENGHT];
             sprintf(m,"%ld",millis());
             char m2[MAX_TOPIC_LENGHT];
-            sprintf(m2,"%s/watchdog",nodeMCUid);
+            sprintf(m2,"%s/watchdog",debugTopic);//nodeMCUid);
             client.publish(m2,m);
           }
           if(d>3000)// max 3 sek
           {
            
            sLEDmillis=millis();
- //char mst[50];
-  //   sprintf(mst,"nodeMCU millis od restartu %lu ms.",sLEDmillis);
-    // serial.printRS(RS_DEBUG_INFO,"Z nodeMCU",mst);
+ char mst[50];
+     sprintf(mst,"t=%02d min %02d s",sLEDmillis/60000,(sLEDmillis%60000)/1000);
+  RSpisz(RS_DEBUG_INFO,"Z nodeMCU",mst);
    //  Serial.println(mst);
           }
            
@@ -334,7 +338,8 @@ void loop()
             unsigned long mmm=millis();
    
             String str="czas od restartu= "+(String) TimeToString(mmm/1000);
-            loguj(str);
+//loguj(str);
+            
             DPRINTLN(str);
             DPRINT("Watchdog czas ");
             DPRINTLN(mmm-WDmillis);
